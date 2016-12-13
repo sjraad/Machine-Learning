@@ -1,0 +1,116 @@
+---
+title: "Machine Learning Project"
+author: "SJR"
+date: "12/12/2016"
+output: html_document
+---
+
+## Human Activity Recognition
+
+The data for this project comes from http://groupware.les.inf.puc-rio.br/har. It is licensed under the **Creative Commons licence (CC BY-SA)**.
+
+The analysis was performed on a Mac OS X Yosemite 10.10.5 using RStudio v 1.0.44 with the following libraries loaded:  
+
+- Caret version 6.0-73  
+- Rattle version 4.1.0  
+- rpart version 4.1-10  
+- rpart.plot version 2.1.0  
+- randomForest version 4.6-10
+
+### Backgound
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har - see the section on the Weight Lifting Exercise Dataset.
+
+### Data
+The training and testing data for this project are available here: 
+
+- https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv  
+- https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Loading and preparing the data
+
+1. Download, rename, save, and read data
+``` {r downloadData, cahce = TRUE}
+trainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(trainURL, destfile = "./train.csv", method = "curl")
+testURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(testURL, destfile = "./test.csv", method = "curl")
+training <- read.csv("./train.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing <- read.csv("./test.csv", na.strings = c("NA", "#DIV/0!", ""))
+dim(training); dim(testing)
+```
+
+2. Clean the dataset and prepare it for analysis by performing the following steps:  
+* Remove the first 7 columns from the _training & testing_ datasets as they have no impact on our analysis
+``` {r removeCol}
+training <- training[, -c(1:7)]; testing <- testing[, -c(1:7)]
+```
+* Remove all variables that have to many NA values using the colSums function
+``` {r NA}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+dim(training); dim(testing)
+```
+
+3. Partition the training data into 2 datasets (70% training, 30% testing)
+``` {r partionDataset}
+library(caret)
+set.seed(1234)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+train <- training[inTrain,]; test <- training[-inTrain,]
+```
+
+### Prediction Model Algorithms
+
+In building the prediction model for our analysis, I will use the Random Forest model by fitting the *Train* dataset using a 4-fold cross-validation, as well as the Decision Tree model.  I will evaluate the results, re-train the selection model and finally, make a prediction using the *Test* dataset.
+
+#### Random Forest
+
+``` {r randomForest, cache = TRUE}
+library(randomForest)
+control <- trainControl(method="cv", number = 4, verboseIter = FALSE)
+fitModelRF <- train(classe ~ ., data = train, method = "rf", trControl = control)
+fitModelRF$finalModel
+```
+The Random Forest model used 500 tress with 27 variable at each split with an *out-of-bag (OOB)* error rate of 0.7%, which basically represents our *test* dataset.
+
+Now, I will predict the outcome for out-of sample accuracy on the *test* data, show the confusion matrix, and compare predicted versus actual
+``` {r predictOutcome}
+predictRF <- predict(fitModelRF, newdata = test)
+confusionMatrix(test$classe, predictRF)
+```
+Our prediction yields an accuracy rate of 99.8% with a 0.2% OOB.
+
+#### Decision Tree
+
+``` {r decisionTree, cache = TRUE}
+library(rattle)
+fitModelDT <- train(classe ~ ., data = train, method = "rpart", trControl = control)
+print(fitModelDT, digits = 4)
+fancyRpartPlot(fitModelDT$finalModel)
+```
+
+Predict the outcome for out-of sample accuracy on the *test* data, show the confusion matrix, and compare predicted versus actual
+``` {r predictOutcomeDT}
+predictDT <- predict(fitModelDT, newdata = test)
+confusionMatrix(test$classe, predictDT)
+```
+The result of our prediction using the Decision Tree is not very impressive. In fact, we were only able to achieve a 48.90% accuracy with an OOB of 51.1%, a value much larger than our *test* dataset of 30%.
+
+### Algorithm Model Selection for Re-Training and Prediction
+
+Based on the 2 different algorithm models used, *Random Forest vs. Decision Tree*, we can conclude that the prediction accuracy and OOB error achieved under the *Random Forest* algorithm was far superior to the *Decision Tree* algorithm **_(99.8% vs. 48.90% accuracy rate and 2.0% vs. 51.1% OOB)_**
+
+### Re-Training the Model
+
+Having concluded that the **Random Forest** algorithm yields the greatest accuracy, I will re-train the model using 20 observations from the original *testing* dataset.
+
+``` {r FinalFit, cache = TRUE}
+fit <- train(classe ~ ., data = training, method = "rf", trControl = control)
+fit$finalModel
+predictF <- predict(fit, testing)
+predictF
+```
+
+### Conclusion
+
+In this assignment, we predicted the classification of 20 observations using Random Forest and Decision Tree algorithms on a trained data.  We observed the accuracy of each algorithm and concluded that **Random Forest** yields the highest accuracy *(99.8%)* with the lowest OOB *(2%)*.
